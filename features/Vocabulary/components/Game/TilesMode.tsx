@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import type { IVocabObj } from '@/features/Vocabulary/store/useVocabStore';
+import { isAmbiguousVocabDistractor } from '@/features/Vocabulary/lib/isAmbiguousVocabDistractor';
 import { Random } from 'random-js';
 import {
   useCorrect,
@@ -216,19 +217,20 @@ const VocabTilesMode = ({
           .filter(obj => obj.word !== selectedWord)
           .map(obj => obj.reading);
       } else {
-        // Meaning quiz
+        // Meaning quiz: skip synonyms, since picking one would also be correct
+        const meaningDistractorObjs = selectedWordObjs.filter(
+          obj => !isAmbiguousVocabDistractor(selectedWordObj, obj),
+        );
         if (isReverse) {
           // Reverse: show meaning, answer is word
           correctAnswerRaw = selectedWord;
-          distractorSourceRaw = selectedWordObjs
-            .filter(obj => obj.word !== selectedWord)
-            .map(obj => obj.word);
+          distractorSourceRaw = meaningDistractorObjs.map(obj => obj.word);
         } else {
           // Normal: show word, answer is meaning
           correctAnswerRaw = selectedWordObj.meanings[0];
-          distractorSourceRaw = selectedWordObjs
-            .filter(obj => obj.word !== selectedWord)
-            .map(obj => obj.meanings[0]);
+          distractorSourceRaw = meaningDistractorObjs.map(
+            obj => obj.meanings[0],
+          );
         }
       }
 
@@ -355,6 +357,11 @@ const VocabTilesMode = ({
   // This prevents the summary from being hidden when smart reverse mode changes after a correct answer
   useEffect(() => {
     if (!displayAnswerSummary) {
+      // resetGame also advances the adaptive selector and the answer timer,
+      // so it cannot run during render. Its triggers live outside this
+      // component (AnswerSummary closing itself, smart reverse mode, props),
+      // which rules out calling it from a single event handler instead.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       resetGame();
     }
   }, [isReverse, resetGame, displayAnswerSummary]);
@@ -527,7 +534,6 @@ const VocabTilesMode = ({
     setScore,
     externalOnWrong,
     externalIsReverse,
-    decideNextReverseMode,
     recordReverseModeWrong,
     logAttempt,
     isReverse,
@@ -582,6 +588,7 @@ const VocabTilesMode = ({
     resetGame,
     getNextQuizType,
     quizType,
+    isReverse,
   ]);
 
   const handleTryAgain = useCallback(() => {

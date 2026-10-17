@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { CircleCheck, CircleX } from 'lucide-react';
 import { Random } from 'random-js';
 import { IVocabObj } from '@/features/Vocabulary/store/useVocabStore';
+import { isAmbiguousVocabDistractor } from '@/features/Vocabulary/lib/isAmbiguousVocabDistractor';
 import { useCorrect, useError } from '@/shared/hooks/generic/useAudio';
 import { buttonBorderStyles } from '@/shared/utils/styles';
 // import GameIntel from '@/shared/ui-composite/Game/GameIntel';
@@ -190,9 +191,14 @@ const VocabMCQ = ({ selectedWordObjs, isHidden }: VocabMCQProps) => {
 
   // Get incorrect options based on mode and quiz type
   const getIncorrectOptions = (): string[] => {
-    // Filter out the current word
-    const incorrectWordObjs = selectedWordObjs.filter(
-      obj => obj.word !== correctChar,
+    // Filter out the current word. When the prompt or the answer is a meaning
+    // (meaning quiz, or any reverse prompt), also skip its synonyms, since
+    // picking one would also be correct.
+    const involvesMeaning = quizType === 'meaning' || isReverse;
+    const incorrectWordObjs = selectedWordObjs.filter(obj =>
+      involvesMeaning && correctWordObj
+        ? !isAmbiguousVocabDistractor(correctWordObj, obj)
+        : obj.word !== correctChar,
     );
 
     if (quizType === 'meaning') {
@@ -224,21 +230,27 @@ const VocabMCQ = ({ selectedWordObjs, isHidden }: VocabMCQProps) => {
     [],
   );
 
-  // Update shuffled options when correctChar or isReverse changes
-  useEffect(() => {
-    isProcessingRef.current = false;
-    if (!hasWords) return;
-    setShuffledOptions(
-      [targetChar ?? '', ...getIncorrectOptions()].sort(
-        () => random.real(0, 1) - 0.5,
-      ) as string[],
-    );
-    setWrongSelectedAnswers([]);
-  }, [correctChar, hasWords, isReverse, quizType]);
+  // Reshuffle options when the question changes. This adjusts state during
+  // render (instead of in an effect) so the new prompt and its options commit
+  // together. Resetting wrongSelectedAnswers also releases the event lock below.
+  const optionsKey = `${hasWords}|${correctChar}|${isReverse}|${quizType}`;
+  const [shuffledOptionsKey, setShuffledOptionsKey] = useState(optionsKey);
+  if (optionsKey !== shuffledOptionsKey) {
+    setShuffledOptionsKey(optionsKey);
+    if (hasWords) {
+      setShuffledOptions(
+        [targetChar ?? '', ...getIncorrectOptions()].sort(
+          () => random.real(0, 1) - 0.5,
+        ) as string[],
+      );
+      setWrongSelectedAnswers([]);
+    }
+  }
 
   // A wrong answer keeps the current prompt on screen. Release the synchronous
   // event lock only after its disabled-button state has committed, so another
   // available option can be selected without accepting duplicate rapid input.
+  // This also runs when a new question resets wrongSelectedAnswers.
   useEffect(() => {
     isProcessingRef.current = false;
   }, [wrongSelectedAnswers]);
@@ -489,4 +501,3 @@ const VocabMCQ = ({ selectedWordObjs, isHidden }: VocabMCQProps) => {
 };
 
 export default VocabMCQ;
-

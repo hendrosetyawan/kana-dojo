@@ -1,7 +1,5 @@
 import type { IVocabObj, VocabLevel } from '@/entities/vocabulary';
-import {
-  useVocabCacheStore,
-} from '@/features/Vocabulary/store/useVocabCacheStore';
+import { useVocabCacheStore } from '@/features/Vocabulary/store/useVocabCacheStore';
 
 type RawVocabEntry = {
   jmdict_seq: string;
@@ -10,16 +8,18 @@ type RawVocabEntry = {
   waller_definition: string;
 };
 
-const toWordObj = (entry: RawVocabEntry): IVocabObj => {
+export const toWordObj = (entry: RawVocabEntry): IVocabObj => {
   const definitionPieces = entry.waller_definition
     .split(/[;,]/)
     .map(piece => piece.trim())
     .filter(Boolean);
+  const jmdictSeq = entry.jmdict_seq?.trim();
 
   return {
     word: entry.kanji?.trim() || entry.kana,
     reading: `${entry.kana}`.trim(),
     meanings: definitionPieces,
+    ...(jmdictSeq ? { jmdictSeq } : {}),
   };
 };
 
